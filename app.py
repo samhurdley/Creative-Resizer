@@ -5,20 +5,14 @@ from PIL import Image
 import streamlit as st
 
 STANDARD_SIZES = {
-    (300, 250): "Medium Rectangle",
+    (300, 250): "Mrec",
     (728, 90): "Leaderboard",
     (300, 600): "Half Page",
     (160, 600): "Wide Skyscraper",
     (320, 50): "Mobile Banner",
-    (320, 100): "Large Mobile Banner",
-    (468, 60): "Full Banner",
-    (250, 250): "Square",
-    (200, 200): "Small Square",
-    (336, 280): "Large Rectangle",
+    (300, 50): "Mobile Billboard",
     (120, 600): "Skyscraper",
-    (970, 90): "Super Leaderboard",
     (970, 250): "Billboard",
-    (300, 1050): "Portrait",
 }
 
 FORMAT_MAP = {
@@ -43,6 +37,14 @@ def find_nearest_size(w, h):
             best_dist = dist
             best_size = (tw, th)
     return best_size, best_dist
+
+
+def find_ratio_match(w, h):
+    """Return the standard size whose ratio exactly matches (w, h), or None."""
+    for (tw, th) in STANDARD_SIZES:
+        if w * th == h * tw:
+            return (tw, th)
+    return None
 
 
 def resize_image_bytes(img, target_w, target_h, fmt):
@@ -70,6 +72,7 @@ def analyze_assets(uploaded_files, tolerance_px):
                 "nearest_standard": None,
                 "standard_label": "—",
                 "distance": None,
+                "resize_reason": None,
                 "status": STATUS_CLIENT,
                 "error": "Could not read file",
                 "resized_bytes": None,
@@ -77,26 +80,38 @@ def analyze_assets(uploaded_files, tolerance_px):
             continue
 
         nearest, dist = find_nearest_size(w, h)
-        label = STANDARD_SIZES[nearest]
+        ratio_target = find_ratio_match(w, h)
 
         if dist == 0:
             status = STATUS_CORRECT
+            resize_reason = None
             resized_bytes = None
+        elif ratio_target:
+            # Correct ratio — resize to the matching standard size
+            status = STATUS_RESIZED
+            resize_reason = "ratio"
+            nearest = ratio_target
+            f.seek(0)
+            img = Image.open(f)
+            resized_bytes = resize_image_bytes(img, nearest[0], nearest[1], pil_fmt)
         elif dist <= tolerance_px:
             status = STATUS_RESIZED
+            resize_reason = "tolerance"
             f.seek(0)
             img = Image.open(f)
             resized_bytes = resize_image_bytes(img, nearest[0], nearest[1], pil_fmt)
         else:
             status = STATUS_CLIENT
+            resize_reason = None
             resized_bytes = None
 
         results.append({
             "filename": f.name,
             "detected": (w, h),
             "nearest_standard": nearest,
-            "standard_label": label,
+            "standard_label": STANDARD_SIZES[nearest],
             "distance": dist,
+            "resize_reason": resize_reason,
             "status": status,
             "error": None,
             "resized_bytes": resized_bytes,
@@ -150,7 +165,7 @@ with st.sidebar:
         help="Assets within this many pixels of a standard size will be automatically resized.",
     )
 
-    with st.expander("IAB standard sizes reference"):
+    with st.expander("MediaWorks Display Sizes reference"):
         rows = [{"Size": f"{w}×{h}", "Label": label} for (w, h), label in STANDARD_SIZES.items()]
         st.table(rows)
 
@@ -195,7 +210,12 @@ if "results" in st.session_state:
     for r in results:
         detected_str = f"{r['detected'][0]}×{r['detected'][1]}" if r["detected"] else "⚠ unreadable"
         standard_str = f"{r['nearest_standard'][0]}×{r['nearest_standard'][1]}" if r["nearest_standard"] else "—"
-        dist_str = str(r["distance"]) + "px" if r["distance"] is not None else "—"
+        if r["resize_reason"] == "ratio":
+            dist_str = "Ratio match"
+        elif r["distance"] is not None:
+            dist_str = str(r["distance"]) + "px"
+        else:
+            dist_str = "—"
         status = r["status"]
         label = status_label(status)
         if status == STATUS_CORRECT:
