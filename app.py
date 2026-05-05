@@ -11,6 +11,7 @@ STANDARD_SIZES = {
     (160, 600): "Wide Skyscraper",
     (320, 50): "Mobile Banner",
     (300, 50): "Mobile Billboard",
+    (320, 480): "Interstitial",
     (120, 600): "Skyscraper",
     (970, 250): "Billboard",
 }
