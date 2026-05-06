@@ -40,12 +40,19 @@ def find_nearest_size(w, h):
     return best_size, best_dist
 
 
-def find_ratio_match(w, h):
-    """Return the standard size whose ratio exactly matches (w, h), or None."""
+def find_ratio_match(w, h, ratio_tolerance=0.02):
+    """Return the standard size whose aspect ratio is within ratio_tolerance of (w, h), or None.
+    Uses relative difference so the threshold scales consistently across portrait/landscape."""
+    input_ratio = w / h
+    best_size = None
+    best_diff = float("inf")
     for (tw, th) in STANDARD_SIZES:
-        if w * th == h * tw:
-            return (tw, th)
-    return None
+        target_ratio = tw / th
+        rel_diff = abs(input_ratio - target_ratio) / target_ratio
+        if rel_diff <= ratio_tolerance and rel_diff < best_diff:
+            best_diff = rel_diff
+            best_size = (tw, th)
+    return best_size
 
 
 def resize_image_bytes(img, target_w, target_h, fmt):
