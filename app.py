@@ -1,7 +1,7 @@
 import io
 import zipfile
 import csv
-from PIL import Image
+from PIL import Image, ImageSequence
 import streamlit as st
 
 STANDARD_SIZES = {
@@ -65,6 +65,27 @@ def resize_image_bytes(img, target_w, target_h, fmt):
     return buf.getvalue()
 
 
+def resize_gif_bytes(img, target_w, target_h):
+    frames = []
+    durations = []
+    for frame in ImageSequence.Iterator(img):
+        durations.append(frame.info.get("duration", img.info.get("duration", 100)))
+        resized = frame.convert("RGBA").resize((target_w, target_h), Image.LANCZOS)
+        frames.append(resized)
+    buf = io.BytesIO()
+    frames[0].save(
+        buf,
+        format="GIF",
+        save_all=True,
+        append_images=frames[1:],
+        duration=durations,
+        loop=img.info.get("loop", 0),
+        optimize=False,
+    )
+    buf.seek(0)
+    return buf.getvalue()
+
+
 def analyze_assets(uploaded_files, tolerance_px):
     results = []
     for f in uploaded_files:
@@ -101,13 +122,19 @@ def analyze_assets(uploaded_files, tolerance_px):
             nearest = ratio_target
             f.seek(0)
             img = Image.open(f)
-            resized_bytes = resize_image_bytes(img, nearest[0], nearest[1], pil_fmt)
+            if ext == "gif" and getattr(img, "n_frames", 1) > 1:
+                resized_bytes = resize_gif_bytes(img, nearest[0], nearest[1])
+            else:
+                resized_bytes = resize_image_bytes(img, nearest[0], nearest[1], pil_fmt)
         elif dist <= tolerance_px:
             status = STATUS_RESIZED
             resize_reason = "tolerance"
             f.seek(0)
             img = Image.open(f)
-            resized_bytes = resize_image_bytes(img, nearest[0], nearest[1], pil_fmt)
+            if ext == "gif" and getattr(img, "n_frames", 1) > 1:
+                resized_bytes = resize_gif_bytes(img, nearest[0], nearest[1])
+            else:
+                resized_bytes = resize_image_bytes(img, nearest[0], nearest[1], pil_fmt)
         else:
             status = STATUS_CLIENT
             resize_reason = None
